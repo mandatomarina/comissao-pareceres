@@ -1,5 +1,7 @@
 from lxml import html
 import requests
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
 import os
 from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
@@ -27,13 +29,19 @@ def uploadPareceres(data_reuniao):
 
 def getComissao(url, upload=False):
     print("Baixando pareceres...")
-    soup = html.fromstring(requests.get(url).content)
+    session = requests.Session()
+    retry = Retry(connect=3, backoff_factor=0.5)
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+
+    soup = html.fromstring(session.get(url).content)
     data_reuniao = soup.xpath("//table/tr/td[@width='30%']")[0].getnext().text_content().strip().replace('/','_')
     pauta = soup.xpath("//table/tr/td[@width='30%']")[3].getnext().xpath("./a")[0].get('href')
 
     if not os.path.exists("data/"+data_reuniao):
         os.mkdir("data/"+data_reuniao)
-    p = requests.get(pauta)
+    p = session.get(pauta)
     with open("data/"+data_reuniao+"/pauta_"+data_reuniao+".pdf", 'wb') as pauta_f:
         pauta_f.write(p.content)
 
@@ -50,13 +58,14 @@ def getComissao(url, upload=False):
                 if len(link) > 1:
                     filepath = str(index) + "_" + filepath
             print(url)
-            r = requests.get(url)
+            r = session.get(url)
 
             with open("data/"+data_reuniao+"/"+filepath, 'wb') as arquivo:
                 arquivo.write(r.content)
     return data_reuniao
 
 def getReuniao():
+    print("Baixando a pauta...")
     url = "https://al.sp.gov.br/alesp/comissao?idComissao=12444"
     r = requests.get(url)
     soup = html.fromstring(r.content)
@@ -70,3 +79,7 @@ def getReuniao():
             uploadPareceres(data_reuniao)
 
 getReuniao()
+
+#hackish
+#data_reuniao = getComissao("https://www.al.sp.gov.br/alesp/comissao-reuniao-agendada?idLegislatura=19&idComissao=12444&idReuniao=1000003117")
+#uploadPareceres(data_reuniao)
